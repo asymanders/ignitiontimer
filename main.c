@@ -2,15 +2,21 @@
  *
  * Copyright (c) 2024 Anders Dinsen anders@dinsen.net - All rights reserved.
  *
- * Redistribution and use in source and binary forms are permitted provided that the above copyright notice
- * and this paragraph are duplicated in all such forms and that any documentation, advertising materials, and 
- * other materials related to such distribution and use acknowledge that the software was developed by the 
- * copyright holder. The name of the copyright holder may not be used to endorse or promote products derived 
- * from this software without specific prior written permission.
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted.
  *
- * THIS SOFTWARE IS PROVIDED "AS IS" AND WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, WITHOUT 
- * LIMITATION, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
+
+/* Target board configuration: */
+#undef CRYSTAL22
+#define ROTATEDFLIPPEDDISPLAYS
 
 #include <at89x52.h>
 
@@ -20,8 +26,6 @@ __sfr __at 0xA2 AUXR1;
 __sfr __at 0xA6 WDTRST;
 
 #include <stdlib.h>
-
-#define CRYSTAL22
 
 #ifdef CRYSTAL22
 #define MILISECOND 1843
@@ -33,13 +37,11 @@ __sfr __at 0xA6 WDTRST;
 #define	IGNITION_FACTOR 27656192L 
 #endif
 
-#define FW_OFFSET	28 /* the physical offset of the flywheel notch in degrees from TDC */
+/* The physical offset of the flywheel notch in degrees from TDC is 28 degrees: */
+#define FW_OFFSET 28 
 
 #define LATCH_FW P3_7
 #define LATCH_IGN P3_6
-
-/* #define ROTATEDFLIPPEDDISPLAYS */
-
 
 /* Global flags */
 volatile __bit f_ignition_interrupt;
