@@ -16,7 +16,7 @@
 
 /* Target board configuration: */
 #undef CRYSTAL22
-#define ROTATEDFLIPPEDDISPLAYS
+#define FLIPPEDDISPLAYS
 
 #include <at89x52.h>
 
@@ -28,13 +28,19 @@ __sfr __at 0xA6 WDTRST;
 #include <stdlib.h>
 
 #ifdef CRYSTAL22
-#define MILISECOND 1843
 #define MINCOUNT 5532; 
 #define	IGNITION_FACTOR 55312384L 
 #else
-#define MILISECOND 922
 #define MINCOUNT 2766;
 #define	IGNITION_FACTOR 27656192L 
+#endif
+
+#ifdef FLIPPEDDISPLAYS
+static const unsigned char rpm_display[] = {3,4,5,6};
+static const unsigned char deg_display[] = {0,1,2};
+#else
+static const unsigned char rpm_display[] = {6,5,4,3};
+static const unsigned char deg_display[] = {2,1,0};
 #endif
 
 /* The physical offset of the flywheel notch in degrees from TDC is 28 degrees: */
@@ -75,34 +81,36 @@ volatile unsigned char ms_counter;
 volatile unsigned char rpm[4];
 volatile unsigned char adv[3];
 
-#ifdef ROTATEDFLIPPEDDISPLAYS
-/* LED displays are rotated and flipped to the rear of the PCB so the bits are permutated:
- * bit 0 => C
- * bit 1 => DP
- * bit 2 => A
- * bit 3 => F
- * bit 4 => G
- * bit 5 => D
- * bit 6 => E
- * bit 7 => B */
+#ifdef FLIPPEDDISPLAYS
+/* LED displays are flipped to the rear of the PCB so the bits are permutated:
+ * bit 0 => F
+ * bit 1 => G
+ * bit 2 => D
+ * bit 3 => C
+ * bit 4 => DP
+ * bit 5 => A
+ * bit 6 => B
+ * bit 7 => E */
 static const unsigned char s7[] = {
 	0b11101101, /* 0 ABCDEF  */
-	0b10000001, /* 1  BC     */
-	0b11110100, /* 2 AB DE G */
-	0b10110101, /* 3 ABC E G */
-	0b10011001, /* 4  BC  FG */
-	0b00111101, /* 5 A CD FG */
-	0b01111101, /* 6 A CDEFG */
-	0b10000101, /* 7 ABC     */
-	0b11111101, /* 8 ABCDEFG */
-	0b10101101, /* 9 ABCD FG */ 
-	0b11011101, /* A ABC EFG*/ 
-	0b01111001, /* b   CDEFG */ 
-	0b01110000, /* c    DE G */ 
-	0b11110001, /* d  BCDE G */ 
-	0b01111100, /* E A  DEFG */ 
-	0b01011100  /* F A   EFG */ 
+	0b01001000, /* 1  BC     */
+	0b11100110, /* 2 AB DE G */
+	0b01101110, /* 3 ABCD  G */
+	0b01001011, /* 4  BC  FG */
+	0b00101111, /* 5 A CD FG */
+	0b10101111, /* 6 A CDEFG */
+	0b01101000, /* 7 ABC     */
+	0b11101111, /* 8 ABCDEFG */
+	0b01101111, /* 9 ABCD FG */ 
+	0b11101011, /* A ABC EFG*/ 
+	0b10001111, /* b   CDEFG */ 
+	0b10000110, /* c    DE G */ 
+	0b11001110, /* d  BCDE G */ 
+	0b10100111, /* E A  DEFG */ 
+	0b10100011  /* F A   EFG */ 
 };
+#define LED_DASH	(2)
+#define LED_DP		(16)
 #else
 /* LED displays are fitted on the front of the PCB as per the original design:
  * bit 0 => A
@@ -131,6 +139,8 @@ static const unsigned char s7[] = {
 	0b01111001, /* E */ 
 	0b01110001  /* F */ 
 };
+#define LED_DASH	(64)
+#define LED_DP		(128)
 #endif
 
 /* Interrupt routines
@@ -182,7 +192,7 @@ void uart_isr(void) __interrupt (4) {
 	}
 }
 
-/* timer 3 interrupt runs the refresh of the display and a miliseconds counter for precise main loop timing */
+/* timer 2 interrupt runs the refresh of the display and a miliseconds counter for precise main loop timing */
 
 void digits_isr(void) __interrupt (5) {
 	P1_4 = 0; /* test output to measure interrupt time */
@@ -248,9 +258,8 @@ void emit_string(__code char *s) {
 
 void main(void) {
 	unsigned char i, j; 
-	char n;
+	unsigned char n = 0;
 	long l;
-	int v;
 	__bit f_ign_overflow;
 
 	/* ports init */
@@ -323,23 +332,43 @@ void main(void) {
 
 		P3_4 = 0; /* debug output to time calculations */
 
-		if ( P1_2 && P1_3 /* dip switches 1 & 2 both off */ ) {
+		if ( P1_2 && P1_3 /* dip switches 3 & 4 both off */ ) {
 			/* TEST MODE: serial output test */
 			emit_string("SERIAL OUTPUT TEST MODE\r\n");
 		}
+		else if ( P1_2 && !P1_3 /* dip switches 3 off & 4 on */ ) {
+			/* Display test mode */
+			for (i=6; i != 255; i--) 
+				digits[i] = s7[(n & 31) >> 1] | (i==(n&7)? LED_DP : 0);
+			n++;
+		}
 		else if ( f_ignition_interrupt ) {
-			if ( P1_2 /* dip switch 2 off */ ) {
+			if ( P1_1 /* dip switch 2 off */ ) {
 				/* TEST MODE: display timer values directly in hex */
-				v = t_ignition.w.w0;
-				for (i=6; i!=2; i--) {
-					digits[i] = s7[v & 15] ;
-					v >>= 4;
-				}
-				v = t_crank.w.w0;
-				for (i=2; i != 255; i--) {
-					digits[i] = f_crank_interrupt? s7[v & 15] : 64;
-					v >>= 4;
-				}
+				digits[deg_display[0]] = f_crank_interrupt? s7[t_crank.b.b0 & 15] : LED_DASH;
+				digits[deg_display[1]] = f_crank_interrupt? s7[t_crank.b.b0 >> 4] : LED_DASH;
+				digits[deg_display[2]] = f_crank_interrupt? s7[t_crank.b.b1 & 15] : LED_DASH;
+
+				if ( t_crank.b.b1 & 16 ) 
+					digits[deg_display[0]] |= LED_DP;
+				if ( t_crank.b.b1 & 32 ) 
+					digits[deg_display[1]] |= LED_DP;
+				if ( t_crank.b.b1 & 64 ) 
+					digits[deg_display[2]] |= LED_DP;
+
+				digits[rpm_display[0]] = s7[t_ignition.b.b0 & 15];
+				digits[rpm_display[1]] = s7[t_ignition.b.b0 >> 4];
+				digits[rpm_display[2]] = s7[t_ignition.b.b1 & 15];
+				digits[rpm_display[3]] = s7[t_ignition.b.b1 >> 4];
+
+				if ( t_ignition.b.b2 & 1 ) 
+					digits[rpm_display[0]] |= LED_DP;
+				if ( t_ignition.b.b2 & 2 ) 
+					digits[rpm_display[1]] |= LED_DP;
+				if ( t_ignition.b.b2 & 4 ) 
+					digits[rpm_display[2]] |= LED_DP;
+				if ( t_ignition.b.b2 & 8 ) 
+					digits[rpm_display[3]] |= LED_DP;
 				f_crank_interrupt = 0;
 			}
 			else {
@@ -347,12 +376,12 @@ void main(void) {
 				f_ign_overflow = t_ignition.l < MINCOUNT; 
 				l = IGNITION_FACTOR / t_ignition.l;
 
-				for (i=6, j=3; i!=2; i--, j--) {
+				for (i=0, j=3; i<4; i++, j--) {
 					if ( f_ign_overflow ) 
 						n = 9;
 					else
-						n = (char)(l % 10);
-					digits[i] = s7[n];
+						n = (unsigned char)(l % 10);
+					digits[rpm_display[i]] = s7[n];
 					rpm[j] = n;
 					l /= 10;
 				}
@@ -365,9 +394,9 @@ void main(void) {
 				if ( f_crank_interrupt ) {
 					/* crank signal detected, calculate advance */
 					l = ( 180 * t_crank.l ) / t_ignition.l - FW_OFFSET; 
-					for (i=2; i != 255; i--) {
-						n = (char)(l % 10);
-						digits[i] = s7[n];
+					for (i=0; i<3; i++) {
+						n = (unsigned char)(l % 10);
+						digits[deg_display[i]] = s7[n];
 						adv[i] = n;
 						l /= 10;
 					}
@@ -380,7 +409,7 @@ void main(void) {
 				else {
 					/* no crank signal detected, dash out advance digits */
 					for (i=0; i<3; i++) 
-						digits[i] = 64;
+						digits[i] = LED_DASH;
 				}
 
 				if ( P1_3 ) {
@@ -392,7 +421,7 @@ void main(void) {
 		else {
 			/* no ignition detected since last round of the main loop, dash out all digits */
 			for (i=0; i<7; i++)
-				digits[i] = 64;
+				digits[i] = LED_DASH;
 			f_crank_interrupt = 0;
 		}
 
